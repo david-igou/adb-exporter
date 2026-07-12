@@ -1,46 +1,72 @@
 # adb-exporter
 
-A Prometheus exporter for Android devices reachable over `adb`. It shells out to
-the `adb` CLI, runs a fixed set of shell commands against the device, and parses
-their output into Prometheus metrics. Built and verified against an
-**Nvidia Shield TV Pro** (Android 11, `arm`, toybox userland).
+[![CI](https://github.com/david-igou/adb-exporter/actions/workflows/ci.yml/badge.svg)](https://github.com/david-igou/adb-exporter/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/david-igou/adb-exporter)](https://goreportcard.com/report/github.com/david-igou/adb-exporter)
+[![Go Reference](https://pkg.go.dev/badge/github.com/david-igou/adb-exporter.svg)](https://pkg.go.dev/github.com/david-igou/adb-exporter)
 
-## Design
+A Prometheus exporter for Android devices reachable over `adb`. It shells out
+to the `adb` CLI, runs a fixed set of shell commands against the device, and
+parses their output into Prometheus metrics — no agent needed on the device.
 
-- **All adb access is serialized.** Concurrent `adb shell` invocations against a
-  single device intermittently fail with `request send failed: Permission
-  denied`, so every adb command runs through one mutex-guarded worker.
-  Collectors run sequentially, never in parallel.
-- **Collection happens per scrape** via a custom `prometheus.Collector` — there
-  is no background polling loop. Each `/metrics` request triggers one serialized
-  pass over the device.
-- **Never crashes, never hangs.** Every command runs under a per-command context
-  timeout and the whole scrape under an overall cap. If the device is
-  unreachable, the exporter serves `adb_up 0` plus scrape-meta metrics and omits
-  device metrics.
-- **CLI, not a protocol library.** It calls the real `adb` binary via
-  `os/exec`; it does not reimplement the adb wire protocol.
+Built and verified against an **Nvidia Shield TV Pro** (Android 11, `arm`,
+toybox userland), but it should work with anything `adb shell` can reach.
 
-## Requirements
+## Features
 
-- Go 1.26+ to build.
-- An `adb` binary on `PATH` (or point `-adb.path` at it), with the target
-  device already authorized (`adb connect <host:port>` succeeds without a manual
-  authorization prompt).
+- **Memory, load, uptime, per-process RSS/CPU, thermals, network, filesystem,
+  media sessions, and foreground app** — ~120 series from one scrape.
+- **No device-side agent.** Just an authorized `adb connect`.
+- **Scrape-driven.** Collection happens per `/metrics` request via a custom
+  `prometheus.Collector`; there is no background polling loop.
+- **Never crashes, never hangs.** Per-command and whole-scrape timeouts; an
+  unreachable device serves `adb_up 0` plus scrape-meta metrics.
+- **Single static binary.** Only runtime dependency is the `adb` binary itself.
 
-## Build & run
+## Quick start
 
 ```sh
+# Build
 make build
+
+# The target device must already be authorized:
+adb connect 10.10.9.22:5555   # should succeed without a prompt on the device
+
+# Run
 ./adb-exporter -adb.address 10.10.9.22:5555
-# metrics on http://localhost:9836/metrics
+
+# Metrics
+curl http://localhost:9836/metrics
 ```
 
-`make all` runs `go vet`, `go test ./...`, then builds. `make test` runs the
-unit tests (no device needed — every parser is table-driven against the real
-sample outputs captured from the reference device).
+### Prometheus scrape config
 
-## Flags
+```yaml
+scrape_configs:
+  - job_name: adb
+    static_configs:
+      - targets:
+          - adb-exporter-host:9836
+```
+
+## Installation
+
+Requires Go 1.26+ to build, and an `adb` binary on `PATH` at runtime (or point
+`-adb.path` at one).
+
+```sh
+# From a checkout
+make build
+
+# Or straight to GOBIN
+go install github.com/david-igou/adb-exporter@latest
+
+# Cross-compile for linux/amd64 + linux/arm64 into dist/
+make crossbuild
+```
+
+## Configuration
+
+All configuration is via flags:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
@@ -97,19 +123,55 @@ kB / 1K-blocks to **bytes** (×1024). `%CPU` and `Use%` are exposed as **ratios
   6=BUFFERING, 7=ERROR, 8=CONNECTING, 9=SKIP_PREV, 10=SKIP_NEXT,
   11=SKIP_QUEUE_ITEM`. Idle sessions (`state=null`) emit no series.
 
-## Error handling
+## Design
 
-One sub-collector failing never aborts the others. Each failure sets
-`adb_scrape_collector_success{collector}=0`, increments
-`adb_scrape_errors_total`, and is logged. When the device is down every device
-collector reports `0` and only `adb_up`, `adb_exporter_build_info`,
-`adb_scrape_duration_seconds`, `adb_scrape_collector_success` (all 0), and
-`adb_scrape_errors_total` are emitted.
+- **All adb access is serialized.** Concurrent `adb shell` invocations against a
+  single device intermittently fail with `request send failed: Permission
+  denied`, so every adb command runs through one mutex-guarded worker.
+  Collectors run sequentially, never in parallel.
+- **CLI, not a protocol library.** It calls the real `adb` binary via
+  `os/exec`; it does not reimplement the adb wire protocol.
+- **One sub-collector failing never aborts the others.** Each failure sets
+  `adb_scrape_collector_success{collector}=0`, increments
+  `adb_scrape_errors_total`, and is logged. When the device is down every
+  device collector reports `0` and only `adb_up`, `adb_exporter_build_info`,
+  `adb_scrape_duration_seconds`, `adb_scrape_collector_success` (all 0), and
+  `adb_scrape_errors_total` are emitted.
 
-## Notes on the reference device
+### Notes on the reference device
 
 - toybox `df` rejects `-B1`; the exporter parses default 1K-block output. `df
   /data` reports the mount as `/data/user/0`, used verbatim as the `mountpoint`.
 - toybox `ps` `%CPU` is a lifetime average, not an instantaneous sample.
 - Media playback state only appears while media is active; an idle session with
   `state=null` is a successful scrape that emits only `adb_media_session_count`.
+
+## Development
+
+```sh
+make help    # list all targets
+make all     # vet + test + build
+make test    # unit tests — no device needed
+make race    # tests with the race detector
+make cover   # tests with coverage summary
+make lint    # vet + gofmt check (+ golangci-lint if installed)
+make fmt     # gofmt the tree
+```
+
+The unit tests need no device: every parser is table-driven against real
+sample outputs captured from the reference device.
+
+### Project layout
+
+```
+main.go               flag parsing, HTTP server, wiring
+internal/adb/         serialized adb CLI client (the mutex-guarded worker)
+internal/collector/   one file per sub-collector + its parser tests
+```
+
+### CI
+
+GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs on every push and
+PR: gofmt/vet/`go mod tidy` checks and golangci-lint, unit tests with the race
+detector and coverage, and cross-compile builds for linux/amd64 and
+linux/arm64.
