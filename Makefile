@@ -10,7 +10,7 @@ GO ?= go
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build install test race cover lint fmt fmt-check vet tidy crossbuild clean
+.PHONY: help all build install test race cover lint fmt fmt-check vet tidy vulncheck crossbuild clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -47,6 +47,9 @@ vet: ## Run go vet
 
 tidy: ## Verify go.mod/go.sum are tidy
 	$(GO) mod tidy -diff
+
+vulncheck: ## Scan for known vulnerabilities (govulncheck)
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 crossbuild: ## Build linux/amd64 and linux/arm64 binaries into dist/
 	@mkdir -p $(DISTDIR)
