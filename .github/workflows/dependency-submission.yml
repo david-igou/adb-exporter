@@ -1,0 +1,27 @@
+name: Dependency submission
+
+# Submits the fully-resolved Go dependency graph (including transitive
+# build-list versions, not just go.mod directs) to GitHub's dependency
+# graph, which feeds Dependabot alerts on the Security tab.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  dependency-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Submit Go dependency graph
+        uses: actions/go-dependency-submission@v2
+        with:
+          go-mod-path: go.mod
+          go-build-target: main.go
