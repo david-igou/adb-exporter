@@ -1,0 +1,6 @@
+# Built binary
+/adb-exporter
+
+# Go build/test artifacts
+*.test
+*.out
