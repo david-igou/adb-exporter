@@ -51,7 +51,7 @@ jobs:
       - name: Unit tests (race + coverage)
         run: make cover
       - name: Upload coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
           path: coverage.out
@@ -76,7 +76,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go build -ldflags "-s -w" -o adb-exporter-linux-${{ matrix.goarch }} .
       - name: Upload binary
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: adb-exporter-linux-${{ matrix.goarch }}
           path: adb-exporter-linux-${{ matrix.goarch }}
