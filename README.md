@@ -50,7 +50,7 @@ scrape_configs:
 
 ## Installation
 
-Requires Go 1.26+ to build, and an `adb` binary on `PATH` at runtime (or point
+Requires Go 1.27.3+ to build, and an `adb` binary on `PATH` at runtime (or point
 `-adb.path` at one).
 
 ```sh
